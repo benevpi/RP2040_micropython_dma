@@ -93,9 +93,13 @@ GPIO_FUNC_SPI, GPIO_FUNC_UART, GPIO_FUNC_I2C = 1, 2, 3
 GPIO_FUNC_PWM, GPIO_FUNC_SIO, GPIO_FUNC_PIO0 = 4, 5, 6
 GPIO_FUNC_NULL = 0x1f
 
+DMA_CH0_AL3_TRANS_COUNT = DMA_BASE + 0x38
+
+
 class PIO_DMA_Transfer():
     def __init__(self, dma_channel, sm_num, block_size, transfer_count):
         self.dma_chan = DMA_CHANS[dma_channel]
+        self.channel_number = dma_channel
        
         if (sm_num == 0):
             self.dma_chan.WRITE_ADDR_REG = PIO0_TX0
@@ -150,3 +154,63 @@ class PIO_DMA_Transfer():
         
     def abort_transfer(self):
         pass
+    
+    def chain_to(self, channel):
+        self.dma_chan.CTRL_TRIG.CHAIN_TO = channel
+        
+    def get_number(self):
+        return self.channel_number
+        
+
+
+    
+#looping transfers
+#note -- see datasheet 2.5.7
+#location of registers is -- AL3 transcount / read address trigger.
+#Writing to these (from one DMA channel) will re-trigger a second DMA channel
+#need to set write ring.
+#could also set read ring?
+#out_buff = array.array('L', ((x if (x<1000) else (2000-x)) for x in range(NSAMPLES)))
+
+class DMA_Control_Block:
+    def __init__(self, this_chan, that_chan, read_address, transfer_count, loops):
+        self.dma_chan = DMA_CHANS[this_chan]
+        
+        #note -- need to set this up to get the right location
+        #but for now just always control channel 0
+        self.dma_chan.WRITE_ADDR_REG = DMA_CH0_AL3_TRANS_COUNT
+        self.dma_chan.CTRL_TRIG.DATA_SIZE = DMA_SIZE_WORD
+        self.dma_chan.TRANS_COUNT_REG = 2 # two transfers. One is the count, one is the read_address.
+        #Then pauses until the other channel chains back to this.
+        
+        self.buffer = array.array('L', (x for x in range(2*loops)))
+        for x in range(loops):
+            self.buffer[2*x] = transfer_count
+            self.buffer[2*x+1] = read_address
+            
+        self.start_address = uctypes.addressof(self.buffer)
+        #set up read ring
+        that_chan.chain_to(this_chan)
+        
+        self.dma_chan.CTRL_TRIG.INCR_WRITE = 1
+        self.dma_chan.CTRL_TRIG.INCR_READ = 1
+        
+        self.dma_chan.CTRL_TRIG.RING_SEL = 1
+        self.dma_chan.CTRL_TRIG.RING_SIZE = 3 # 1u<<3 bytes / 8 bytes
+        self.dma_chan.CTRL_TRIG.TREQ_SEL = 0x3f # unpaced transfer
+        
+    def start_chain(self):
+        self.dma_chan.READ_ADDR_REG = self.start_address
+        self.dma_chan.CTRL_TRIG.EN = 1
+        
+    def transfer_count(self):
+        return self.dma_chan.TRANS_COUNT_REG
+    
+    def get_read_address(self):
+        return self.dma_chan.READ_ADDR_REG
+    
+    def busy(self):
+        if self.dma_chan.CTRL_TRIG.DATA_SIZE == 1:
+            return True
+        else:
+            return False
