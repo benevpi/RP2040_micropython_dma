@@ -1,3 +1,4 @@
+import rp2040_device
 from machine import Pin
 from rp2 import PIO, StateMachine, asm_pio
 from time import sleep
@@ -76,17 +77,11 @@ DREQ_UART0_RX, DREQ_UART1_TX, DREQ_UART1_RX = 21, 22, 23
 DREQ_I2C0_TX,  DREQ_I2C0_RX,  DREQ_I2C1_TX  = 32, 33, 34
 DREQ_I2C1_RX,  DREQ_ADC                     = 35, 36
 
+
+
 DMA_CHANS = [struct(DMA_BASE + n*DMA_CHAN_WIDTH, DMA_CHAN_REGS) for n in range(0,DMA_CHAN_COUNT)]
 DMA_DEVICE = struct(DMA_BASE, DMA_REGS)
 
-PIO0_TX0 = PIO0_BASE + 0x010
-PIO0_TX1 = PIO0_BASE + 0x014
-PIO0_TX2 = PIO0_BASE + 0x018
-PIO0_TX3 = PIO0_BASE + 0x01c
-PIO1_TX0 = PIO1_BASE + 0x010
-PIO0_TX1 = PIO1_BASE + 0x014
-PIO0_TX2 = PIO1_BASE + 0x018
-PIO0_TX3 = PIO1_BASE + 0x01c
 
 GPIO_FUNC_SPI, GPIO_FUNC_UART, GPIO_FUNC_I2C = 1, 2, 3
 GPIO_FUNC_PWM, GPIO_FUNC_SIO, GPIO_FUNC_PIO0 = 4, 5, 6
@@ -100,30 +95,12 @@ class PIO_DMA_Transfer():
         self.dma_chan = DMA_CHANS[dma_channel]
         self.channel_number = dma_channel
        
-        if (sm_num == 0):
-            self.dma_chan.WRITE_ADDR_REG = PIO0_TX0
-            self.dma_chan.CTRL_TRIG.TREQ_SEL = DREQ_PIO0_TX0
-        elif (sm_num == 1):
-            self.dma_chan.WRITE_ADDR_REG = PIO0_TX1
-            self.dma_chan.CTRL_TRIG.TREQ_SEL = DREQ_PIO0_TX1
-        elif (sm_num == 2):
-            self.dma_chan.WRITE_ADDR_REG = PIO0_TX2
-            self.dma_chan.CTRL_TRIG.TREQ_SEL = DREQ_PIO0_TX2
-        elif (sm_num == 3):
-            self.dma_chan.WRITE_ADDR_REG = PIO0_TX3
-            self.dma_chan.CTRL_TRIG.TREQ_SEL = DREQ_PIO0_TX3
-        elif (sm_num == 4):
-            self.dma_chan.WRITE_ADDR_REG = PIO1_TX0
-            self.dma_chan.CTRL_TRIG.TREQ_SEL = DREQ_PIO1_TX0
-        elif (sm_num == 5):
-            self.dma_chan.WRITE_ADDR_REG = PIO1_TX1
-            self.dma_chan.CTRL_TRIG.TREQ_SEL = DREQ_PIO1_TX1
-        elif (sm_num == 6):
-            self.dma_chan.WRITE_ADDR_REG = PIO1_TX2
-            self.dma_chan.CTRL_TRIG.TREQ_SEL = DREQ_PIO1_TX2
-        elif (sm_num == 7):
-            self.dma_chan.WRITE_ADDR_REG = PIO1_TX3
-            self.dma_chan.CTRL_TRIG.TREQ_SEL = DREQ_PIO1_TX3
+        if (sm_num >= 0 and sm_num < 4):
+            self.dma_chan.WRITE_ADDR_REG = PIO0_BASE + 0x10 + sm_num *4
+            self.dma_chan.CTRL_TRIG.TREQ_SEL = sm_num
+        elif (sm_num < 8):
+            self.dma_chan.WRITE_ADDR_REG = PIO1_BASE + 0x10 + (sm_num-4) *4
+            self.dma_chan.CTRL_TRIG.TREQ_SEL = sm_num + 4
         
         if (block_size == 8):
             self.dma_chan.CTRL_TRIG.DATA_SIZE = DMA_SIZE_BYTE
@@ -213,3 +190,4 @@ class DMA_Control_Block:
             return True
         else:
             return False
+
